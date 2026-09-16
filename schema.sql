@@ -4,6 +4,9 @@
 CREATE DATABASE IF NOT EXISTS cli_assistant;
 USE cli_assistant;
 
+-- Migrasi untuk database lama (tambah kolom notifikasi reminder):
+-- ALTER TABLE reminders ADD COLUMN last_notified_at DATETIME NULL AFTER recurrence_pattern;
+
 -- 1. users
 CREATE TABLE IF NOT EXISTS users (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -49,6 +52,7 @@ CREATE TABLE IF NOT EXISTS reminders (
     is_done BOOLEAN DEFAULT FALSE,
     is_recurring BOOLEAN DEFAULT FALSE,
     recurrence_pattern VARCHAR(50),
+    last_notified_at DATETIME NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id),

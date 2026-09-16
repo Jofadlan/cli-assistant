@@ -12,6 +12,7 @@ from services.reminder_manager import ReminderManager
 from services.conversation_manager import ConversationManager
 from services.api_client import APIClient
 from services.chat_session import ChatSession
+from services.reminder_scheduler import ReminderScheduler
 from utils.cli import CLIHandler
 from utils.colors import C, colored
 
@@ -77,6 +78,10 @@ def main():
         chat_session=chat_session,
     )
 
+    # Scheduler notifikasi reminder
+    scheduler = ReminderScheduler(reminder_manager, prompt_fn=cli._prompt)
+    cli.scheduler = scheduler
+
     print(colored("  Ketik /help untuk melihat semua perintah", C.GRAY))
     print()
 
@@ -92,6 +97,7 @@ def main():
             except EOFError:
                 break
     finally:
+        scheduler.stop()
         auth.logout()
         db.disconnect()
         print()
