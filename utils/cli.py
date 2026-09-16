@@ -262,10 +262,12 @@ class CLIHandler:
                 "/remind standup harian 2026-09-21 09:00",
             ],
             "notes": [
-                "Tanpa argumen: mode interaktif (tugas, tanggal, prioritas ditanya satu-satu)",
+                "Tanpa argumen: mode interaktif (tugas, tanggal, prioritas, berulang ditanya satu-satu)",
                 "Format tanggal: YYYY-MM-DD, DD/MM/YYYY, DD-MM-YYYY — dengan atau tanpa jam",
                 "Tanpa jam → dianggap sampai akhir hari itu (23:59)",
                 "Prioritas default: medium (pilihan: high, medium, low)",
+                "Bisa berulang: daily, weekly, atau monthly — otomatis dijadwalkan ulang setelah dinotifikasi",
+                "Saat jatuh tempo, notifikasi muncul otomatis di terminal (tanpa perlu /reminders)",
             ],
         },
         "/reminders": {
@@ -276,6 +278,7 @@ class CLIHandler:
                 "--pending: hanya yang belum selesai",
                 "--done: hanya yang sudah selesai",
                 "Gunakan ID untuk /update-reminder dan /delete-reminder",
+                "Reminder yang lewat tenggat juga muncul otomatis sebagai notifikasi di terminal",
             ],
         },
         "/update-reminder": {
@@ -316,6 +319,7 @@ class CLIHandler:
         self.reminder_manager = reminder_manager
         self.conversation_manager = conversation_manager
         self.chat_session = chat_session
+        self.scheduler = None  # di-set dari main.py
         self._commands = {
             "/login": self._login,
             "/register": self._register,
@@ -378,6 +382,12 @@ class CLIHandler:
         if success_flag:
             print(success(f"Selamat datang, {colored(username, C.BOLD)}!"))
             self.chat_session.start_new_session()
+            if self.scheduler:
+                self.scheduler.start(self.auth.current_user.id)
+                pending = self.reminder_manager.read(self.auth.current_user.id, "pending")
+                overdue = [r for r in pending if r.get("due_date") and str(r["due_date"]) < datetime.now().strftime("%Y-%m-%d %H:%M:%S")]
+                if overdue:
+                    print(warning(f"Kamu punya {len(overdue)} reminder yang sudah lewat tenggat — cek /reminders"))
         else:
             print(error(msg))
         return True
@@ -401,6 +411,8 @@ class CLIHandler:
             print(warning("Belum login"))
             return True
         success_flag, msg = self.auth.logout()
+        if self.scheduler:
+            self.scheduler.stop()
         print(success("Berhasil logout. Sampai jumpa!"))
         return True
 
@@ -841,6 +853,8 @@ class CLIHandler:
         task = ""
         due_date = None
         priority = "medium"
+        is_recurring = False
+        recurrence_pattern = None
 
         if args:
             # Try to parse inline: /remind <task> <date>
@@ -884,6 +898,17 @@ class CLIHandler:
             elif prio_input:
                 print(warning(f"Prioritas '{prio_input}' tidak dikenal, pakai 'medium'"))
 
+            is_recurring = False
+            recurrence_pattern = None
+            rec_input = input(
+                f"  {colored('Berulang?', C.CYAN)} {dim('[daily/weekly/monthly] (enter = tidak)')}: "
+            ).strip().lower()
+            if rec_input in ["daily", "weekly", "monthly"]:
+                is_recurring = True
+                recurrence_pattern = rec_input
+            elif rec_input:
+                print(warning(f"Pattern '{rec_input}' tidak dikenal, reminder dibuat non-berulang"))
+
             print()
 
         # Show confirmation
@@ -892,10 +917,12 @@ class CLIHandler:
         print(f"  Tanggal    : {colored(due_date, C.YELLOW)}")
         prio_colors = {"high": C.BRIGHT_RED, "medium": C.BRIGHT_YELLOW, "low": C.GREEN}
         print(f"  Prioritas  : {colored(priority, prio_colors.get(priority, C.WHITE))}")
+        print(f"  Berulang   : {colored(recurrence_pattern if is_recurring else '-', C.YELLOW)}")
         print()
 
         success_flag, msg = self.reminder_manager.create(
-            self.auth.current_user.id, task, due_date, priority
+            self.auth.current_user.id, task, due_date, priority,
+            is_recurring=is_recurring, recurrence_pattern=recurrence_pattern,
         )
         if success_flag:
             print(success(f"Reminder dibuat: {colored(task, C.BOLD)}"))
